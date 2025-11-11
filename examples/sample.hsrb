@@ -1,0 +1,7 @@
+# Haskell-like-Ruby example
+nums = [1, 2, 3, 4, 5]
+double = ->(x) { x * 2 }
+sum_fn = ->(a, b) { a + b }
+
+result = pipe(nums, ->(n){ n.map(&double) }, ->(n){ n.reduce(0, &sum_fn) })
+print(result)
