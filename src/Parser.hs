@@ -1,5 +1,6 @@
-module Parser (parseRuby) where
+module Parser (Expr(..), parseRuby) where
 import Text.ParserCombinators.ReadP
+import Control.Applicative ((<|>))
 
 data Expr
   = IntLit Int
@@ -9,11 +10,16 @@ data Expr
 
 parseRuby :: String -> Expr
 parseRuby src =
-  case readP_to_S expr src of
+  case readP_to_S (skipSpaces *> expr <* skipSpaces <* eof) src of
     [(e, "")] -> e
     _ -> error "Parse error"
   where
     intLit = IntLit . read <$> munch1 (`elem` ['0'..'9'])
-    addExpr = chainl1 term (Add <$ skipSpaces *> char '+' *> skipSpaces)
-    term = intLit
-    expr = addExpr
+    parens p = between (char '(' >> skipSpaces) (skipSpaces >> char ')') p
+    term = intLit <|> parens expr
+    addOp = do
+      skipSpaces
+      _ <- char '+'
+      skipSpaces
+      return Add
+    expr = chainl1 term addOp
