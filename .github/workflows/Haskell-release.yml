@@ -1,0 +1,26 @@
+name: "🏗️ Build & Release — Haskell-like-Ruby"
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: haskell/actions/setup@v2
+        with:
+          ghc-version: '9.8.1'
+      - name: Build
+        run: |
+          mkdir -p dist
+          ghc -o dist/haskell-like-ruby app/Main.hs src/*.hs
+      - name: Create Release
+        uses: softprops/action-gh-release@v1
+        with:
+          files: dist/haskell-like-ruby
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
