@@ -2,26 +2,74 @@ name: "🏗️ Build & Release — Haskell-like-Ruby"
 
 on:
   push:
+    branches:
+      - main           # main 푸시 → 빌드만 수행
     tags:
-      - 'v*'
-  workflow_dispatch:
+      - 'v*'           # 태그 푸시 → 자동 릴리즈
+  workflow_dispatch:    # 수동 실행 허용
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  build-release:
     runs-on: ubuntu-latest
+
     steps:
-      - uses: actions/checkout@v4
-      - uses: haskell-actions/setup@v2   # ✅ 수정됨
+      - name: 📦 Checkout repository
+        uses: actions/checkout@v4
+
+      - name: 🧰 Setup Haskell
+        uses: haskell-actions/setup@v2
         with:
           ghc-version: '9.8.1'
           cabal-version: '3.10.2.0'
-      - name: Build
+
+      - name: 🛠️ Build binary
         run: |
           mkdir -p dist
-          ghc -o dist/haskell-like-ruby app/Main.hs src/*.hs
-      - name: Create Release
+          ghc -O2 -outputdir dist -o dist/haskell-like-ruby app/Main.hs src/*.hs
+          strip dist/haskell-like-ruby || true
+          echo "✅ Build complete: dist/haskell-like-ruby"
+
+      - name: 🧾 Generate ProofLedger SHA256SUMS
+        shell: bash
+        run: |
+          cd dist
+          sha256sum haskell-like-ruby > SHA256SUMS.txt
+          echo "----- ProofLedger Metadata -----" >> SHA256SUMS.txt
+          echo "Build Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> SHA256SUMS.txt
+          echo "Commit: $GITHUB_SHA" >> SHA256SUMS.txt
+          echo "Tag: ${GITHUB_REF_NAME:-none}" >> SHA256SUMS.txt
+          echo "---------------------------------" >> SHA256SUMS.txt
+          cat SHA256SUMS.txt
+
+      - name: 📤 Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: haskell-like-ruby-build
+          path: |
+            dist/haskell-like-ruby
+            dist/SHA256SUMS.txt
+
+      - name: 🚀 Publish GitHub Release (only on tags)
+        if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v1
         with:
-          files: dist/haskell-like-ruby
+          name: Release ${{ github.ref_name }}
+          files: |
+            dist/haskell-like-ruby
+            dist/SHA256SUMS.txt
+          body: |
+            🏷️ **Haskell-like-Ruby** ${{ github.ref_name }}
+
+            ✅ Built automatically via GitHub Actions  
+            🔒 Includes ProofLedger SHA-256 verification file  
+
+            **Checksum preview:**
+            ```
+            $(head -n 3 dist/SHA256SUMS.txt)
+            ```
+          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
