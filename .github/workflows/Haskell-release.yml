@@ -1,4 +1,4 @@
-name: "🏗️ 3OS Auto Build & Release — Haskell-like-Ruby"
+name: "🏗️ 3OS Auto Build & Release (Main Push Enabled)"
 
 on:
   push:
@@ -6,7 +6,9 @@ on:
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: write   # ✅ main push 가능하도록
+  actions: write
+  checks: write
 
 jobs:
   build-3os:
@@ -57,21 +59,6 @@ jobs:
         with:
           path: dist
 
-      - name: 🧮 Detect next version tag
-        id: version
-        run: |
-          latest_tag=$(git tag --sort=-v:refname | head -n 1)
-          if [[ -z "$latest_tag" ]]; then
-            next_tag="v1.0.0"
-          else
-            base=${latest_tag#v}
-            IFS='.' read -r major minor patch <<< "$base"
-            patch=$((patch + 1))
-            next_tag="v${major}.${minor}.${patch}"
-          fi
-          echo "next_tag=$next_tag" >> $GITHUB_ENV
-          echo "🔖 Next tag: $next_tag"
-
       - name: 🧾 Generate ProofLedger SHA256SUMS
         run: |
           cd dist
@@ -79,37 +66,30 @@ jobs:
           echo "----- ProofLedger Metadata -----" >> SHA256SUMS.txt
           echo "Build Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> SHA256SUMS.txt
           echo "Commit: $GITHUB_SHA" >> SHA256SUMS.txt
-          echo "Tag: ${{ env.next_tag }}" >> SHA256SUMS.txt
+          echo "Branch: main" >> SHA256SUMS.txt
           echo "---------------------------------" >> SHA256SUMS.txt
           cat SHA256SUMS.txt
 
-      - name: 🧱 Commit & Push new tag
+      - name: 🧱 Commit ProofLedger back to main
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a ${{ env.next_tag }} -m "Auto 3OS release ${{ env.next_tag }}"
-          git push origin ${{ env.next_tag }}
+          mkdir -p proofledger
+          cp dist/SHA256SUMS.txt proofledger/proofledger-main-$(date +%Y%m%d-%H%M%S).txt
+          git add proofledger/
+          git commit -m "Auto update ProofLedger for main build"
+          git push origin main   # ✅ main에 직접 push
 
       - name: 🚀 Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
-          name: "Haskell-like-Ruby ${{ env.next_tag }}"
-          tag_name: ${{ env.next_tag }}
+          name: "Haskell-like-Ruby (Main Auto Release)"
+          tag_name: "v$(date +%Y.%m.%d-%H%M)"
           files: |
             dist/haskell-like-ruby-linux
             dist/haskell-like-ruby-mac
             dist/haskell-like-ruby-win.exe
             dist/SHA256SUMS.txt
-          body: |
-            🏗️ **3OS Auto Release**
-
-            ✅ Linux / macOS / Windows build complete  
-            🔒 Includes ProofLedger SHA-256 verification file  
-            
-            **Checksum preview:**
-            ```
-            $(head -n 3 dist/SHA256SUMS.txt)
-            ```
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
