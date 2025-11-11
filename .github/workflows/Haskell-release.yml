@@ -1,30 +1,18 @@
-name: "🏗️ 3OS Auto Build & Release (Main Push Enabled)"
+name: "🤖 Auto Update Contributors"
 
 on:
   push:
     branches: [ main ]
+  schedule:
+    - cron: "0 0 * * 0"  # 매주 일요일 UTC 00:00 자동 업데이트
   workflow_dispatch:
 
 permissions:
-  contents: write   # ✅ main push 가능하도록
-  actions: write
-  checks: write
+  contents: write
 
 jobs:
-  build-3os:
-    runs-on: ${{ matrix.os }}
-    strategy:
-      matrix:
-        include:
-          - os: ubuntu-latest
-            suffix: linux
-            ext: ""
-          - os: macos-latest
-            suffix: mac
-            ext: ""
-          - os: windows-latest
-            suffix: win
-            ext: ".exe"
+  update-contributors:
+    runs-on: ubuntu-latest
 
     steps:
       - name: 📦 Checkout
@@ -32,64 +20,33 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: 🧰 Setup Haskell
-        uses: haskell-actions/setup@v2
-        with:
-          ghc-version: '9.8.1'
-          cabal-version: '3.10.2.0'
+      - name: ⚙️ Install jq
+        run: sudo apt-get update && sudo apt-get install -y jq
 
-      - name: 🛠️ Build
+      - name: 🧮 Generate CONTRIBUTORS.md
         run: |
-          mkdir -p dist
-          ghc -O2 -outputdir dist -o "dist/haskell-like-ruby-${{ matrix.suffix }}${{ matrix.ext }}" app/Main.hs src/*.hs
-          echo "✅ Build complete for ${{ matrix.os }}"
+          echo "# 🤝 Contributors" > CONTRIBUTORS.md
+          echo "" >> CONTRIBUTORS.md
+          echo "Automatically generated from GitHub API for [${{ github.repository }}](https://github.com/${{ github.repository }})." >> CONTRIBUTORS.md
+          echo "" >> CONTRIBUTORS.md
+          echo "| Avatar | Name | Contributions |" >> CONTRIBUTORS.md
+          echo "|--------|------|----------------|" >> CONTRIBUTORS.md
 
-      - name: 📦 Upload per-OS artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: haskell-like-ruby-${{ matrix.suffix }}
-          path: dist/haskell-like-ruby-${{ matrix.suffix }}*
-  
-  release:
-    needs: build-3os
-    runs-on: ubuntu-latest
-    steps:
-      - name: 📦 Download all build artifacts
-        uses: actions/download-artifact@v4
-        with:
-          path: dist
+          curl -s "https://api.github.com/repos/${{ github.repository }}/contributors?per_page=100" \
+          | jq -r '.[] | select(.type=="User") | "| ![avatar](" + .avatar_url + "&s=40) | [" + .login + "](" + .html_url + ") | " + (.contributions|tostring) + " |"' \
+          >> CONTRIBUTORS.md
 
-      - name: 🧾 Generate ProofLedger SHA256SUMS
-        run: |
-          cd dist
-          sha256sum * > SHA256SUMS.txt || shasum -a 256 * > SHA256SUMS.txt
-          echo "----- ProofLedger Metadata -----" >> SHA256SUMS.txt
-          echo "Build Time: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> SHA256SUMS.txt
-          echo "Commit: $GITHUB_SHA" >> SHA256SUMS.txt
-          echo "Branch: main" >> SHA256SUMS.txt
-          echo "---------------------------------" >> SHA256SUMS.txt
-          cat SHA256SUMS.txt
+          echo "" >> CONTRIBUTORS.md
+          echo "_Last updated: $(date -u '+%Y-%m-%d %H:%M UTC')_" >> CONTRIBUTORS.md
 
-      - name: 🧱 Commit ProofLedger back to main
+      - name: 🧱 Commit and Push
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          mkdir -p proofledger
-          cp dist/SHA256SUMS.txt proofledger/proofledger-main-$(date +%Y%m%d-%H%M%S).txt
-          git add proofledger/
-          git commit -m "Auto update ProofLedger for main build"
-          git push origin main   # ✅ main에 직접 push
-
-      - name: 🚀 Create GitHub Release
-        uses: softprops/action-gh-release@v1
-        with:
-          name: "Haskell-like-Ruby (Main Auto Release)"
-          tag_name: "v$(date +%Y.%m.%d-%H%M)"
-          files: |
-            dist/haskell-like-ruby-linux
-            dist/haskell-like-ruby-mac
-            dist/haskell-like-ruby-win.exe
-            dist/SHA256SUMS.txt
-          generate_release_notes: true
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          git add CONTRIBUTORS.md
+          if git diff --cached --quiet; then
+            echo "✅ No changes in contributor list."
+          else
+            git commit -m "🤖 Auto update CONTRIBUTORS.md"
+            git push origin main
+          fi
