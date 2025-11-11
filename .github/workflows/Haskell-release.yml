@@ -11,9 +11,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: haskell/actions/setup@v2
+      - uses: haskell-actions/setup@v2   # ✅ 수정됨
         with:
           ghc-version: '9.8.1'
+          cabal-version: '3.10.2.0'
       - name: Build
         run: |
           mkdir -p dist
